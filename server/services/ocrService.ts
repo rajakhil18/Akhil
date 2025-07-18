@@ -9,9 +9,7 @@ class OCRService {
 
   async initializeWorker() {
     if (!this.worker) {
-      this.worker = await createWorker();
-      await this.worker.loadLanguage('eng');
-      await this.worker.initialize('eng');
+      this.worker = await createWorker('eng');
     }
     return this.worker;
   }
@@ -79,10 +77,9 @@ class OCRService {
   }
 
   private async preprocessImage(filePath: string, mimeType: string): Promise<string> {
-    // If it's a PDF, we'd need pdf2pic or similar - for now, handle images only
+    // If it's a PDF, we can't process it with current setup
     if (mimeType === 'application/pdf') {
-      // For now, return as-is. In production, you'd convert PDF to image
-      return filePath;
+      throw new Error('PDF processing is not currently supported. Please upload an image file (JPEG, PNG).');
     }
 
     // Preprocess image for better OCR results

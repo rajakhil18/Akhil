@@ -28,11 +28,11 @@ const upload = multer({
   storage: storage_multer,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
   fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and PDF files are allowed.'));
+      cb(new Error('Invalid file type. Only JPEG and PNG files are allowed.'));
     }
   }
 });
