@@ -28,8 +28,8 @@ Preferred communication style: Simple, everyday language.
 
 1. **Document Upload System**
    - Drag-and-drop file upload interface
-   - Support for JPEG and PNG files (PDF temporarily disabled)
-   - File size validation and type checking
+   - Support for multiple file formats: JPEG, PNG, GIF, BMP, TIFF, WebP, and PDF
+   - File size validation (10MB limit) and type checking
    - Automatic document type detection
 
 2. **Enhanced OCR Processing Pipeline**

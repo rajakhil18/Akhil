@@ -3,6 +3,10 @@ import { storage } from "../storage";
 import sharp from "sharp";
 import path from "path";
 import fs from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 class OCRService {
   private worker: any = null;
@@ -49,30 +53,45 @@ class OCRService {
         throw new Error("Document not found");
       }
 
-      // Preprocess image if needed
-      const processedImagePath = await this.preprocessImage(document.filePath, document.mimeType);
+      let extractedText = '';
+      let confidenceScore = 0;
       
-      // Initialize OCR worker
-      const worker = await this.initializeWorker();
-      
-      // Perform OCR
-      const { data } = await worker.recognize(processedImagePath);
-      
-      // Clean up extracted text
-      const cleanedText = this.cleanupText(data.text);
-      
-      // Calculate confidence score
-      const confidenceScore = Math.round(data.confidence);
+      // Handle different file types
+      if (document.mimeType === 'application/pdf') {
+        // For PDFs, return a message explaining the limitation
+        extractedText = "PDF text extraction is currently under development. Please convert your PDF to an image format (PNG, JPEG) for OCR processing.";
+        confidenceScore = 0;
+      } else {
+        // For images, use OCR
+        const processedImagePath = await this.preprocessImage(document.filePath, document.mimeType);
+        
+        // Initialize OCR worker
+        const worker = await this.initializeWorker();
+        
+        // Perform OCR
+        const { data } = await worker.recognize(processedImagePath);
+        
+        // Clean up extracted text
+        extractedText = this.cleanupText(data.text);
+        
+        // Calculate confidence score
+        confidenceScore = Math.round(data.confidence);
+        
+        // Clean up processed image if different from original
+        if (processedImagePath !== document.filePath && fs.existsSync(processedImagePath)) {
+          fs.unlinkSync(processedImagePath);
+        }
+      }
       
       // Extract structured data based on document type
-      const structuredData = this.extractStructuredData(cleanedText, document.documentType);
+      const structuredData = this.extractStructuredData(extractedText, document.documentType);
       
       // Store OCR results
       await storage.createOcrResult({
         documentId: document.id,
-        extractedText: cleanedText,
+        extractedText,
         structuredData,
-        boundingBoxes: data.words,
+        boundingBoxes: document.mimeType === 'application/pdf' ? [] : undefined,
         confidenceScore,
         processingTime: Date.now() - startTime,
       });
@@ -82,11 +101,6 @@ class OCRService {
         status: "completed",
         confidenceScore,
       });
-
-      // Clean up processed image if it's different from original
-      if (processedImagePath !== document.filePath) {
-        fs.unlinkSync(processedImagePath);
-      }
 
     } catch (error) {
       console.error(`OCR processing failed for document ${documentId}:`, error);
@@ -102,10 +116,7 @@ class OCRService {
   private async preprocessImage(filePath: string, mimeType: string): Promise<string> {
     let imagePath = filePath;
     
-    // Convert PDF to image if needed
-    if (mimeType === 'application/pdf') {
-      throw new Error('PDF processing is temporarily disabled. Please upload an image file (JPEG, PNG) for now.');
-    }
+    // This function is only for image files now, PDFs are handled separately
 
     // Advanced preprocessing for maximum OCR accuracy
     const processedPath = imagePath.replace(path.extname(imagePath), '_processed.png');
