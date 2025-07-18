@@ -9,7 +9,20 @@ class OCRService {
 
   async initializeWorker() {
     if (!this.worker) {
-      this.worker = await createWorker('eng');
+      this.worker = await createWorker('eng', 1, {
+        logger: m => console.log(m),
+        errorHandler: err => console.error(err)
+      });
+      
+      // Configure OCR parameters for better accuracy
+      await this.worker.setParameters({
+        'tessedit_char_whitelist': 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?@#$%^&*()_+-=[]{}|;:\'",.<>/\\`~',
+        'tessedit_pageseg_mode': '1', // Automatic page segmentation with OSD
+        'tessedit_ocr_engine_mode': '1', // Use LSTM OCR engine
+        'preserve_interword_spaces': '1',
+        'user_defined_dpi': '300',
+        'tessedit_do_invert': '0'
+      });
     }
     return this.worker;
   }
@@ -38,16 +51,19 @@ class OCRService {
       // Perform OCR
       const { data } = await worker.recognize(processedImagePath);
       
+      // Clean up extracted text
+      const cleanedText = this.cleanupText(data.text);
+      
       // Calculate confidence score
       const confidenceScore = Math.round(data.confidence);
       
       // Extract structured data based on document type
-      const structuredData = this.extractStructuredData(data.text, document.documentType);
+      const structuredData = this.extractStructuredData(cleanedText, document.documentType);
       
       // Store OCR results
       await storage.createOcrResult({
         documentId: document.id,
-        extractedText: data.text,
+        extractedText: cleanedText,
         structuredData,
         boundingBoxes: data.words,
         confidenceScore,
@@ -82,17 +98,53 @@ class OCRService {
       throw new Error('PDF processing is not currently supported. Please upload an image file (JPEG, PNG).');
     }
 
-    // Preprocess image for better OCR results
+    // Advanced preprocessing for better OCR results
     const processedPath = filePath.replace(path.extname(filePath), '_processed.png');
     
+    // Get image metadata to determine appropriate processing
+    const metadata = await sharp(filePath).metadata();
+    const width = metadata.width || 1000;
+    const height = metadata.height || 1000;
+    
+    // Calculate optimal scale factor for better OCR
+    const targetWidth = Math.max(width * 2, 2000); // Upscale for better OCR
+    
     await sharp(filePath)
+      .resize(targetWidth, null, { 
+        kernel: sharp.kernel.lanczos3,
+        withoutEnlargement: false
+      })
       .greyscale()
       .normalize()
-      .sharpen()
-      .png()
+      .linear(1.2, -(128 * 1.2) + 128) // Increase contrast
+      .sharpen({ sigma: 1, m1: 1, m2: 2, x1: 2, y2: 10, y3: 20 })
+      .median(3) // Reduce noise
+      .png({ quality: 100, compressionLevel: 0 })
       .toFile(processedPath);
     
     return processedPath;
+  }
+
+  private cleanupText(text: string): string {
+    return text
+      // Remove excessive whitespace and normalize line breaks
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      // Fix common OCR character errors in context
+      .replace(/[|]/g, 'I')
+      .replace(/\b0(?=[A-Za-z])/g, 'O') // 0 followed by letter -> O
+      .replace(/\b5(?=[A-Za-z])/g, 'S') // 5 followed by letter -> S
+      .replace(/\b1(?=[A-Za-z])/g, 'l') // 1 followed by letter -> l
+      // Remove strange characters but preserve common symbols
+      .replace(/[^\w\s.,!?@#$%^&*()_+\-=\[\]{}|;:'",.<>/\\`~\n]/g, '')
+      // Clean up spacing around punctuation
+      .replace(/\s+([.,!?;:])/g, '$1')
+      .replace(/([.,!?;:])\s*/g, '$1 ')
+      // Remove excessive line breaks
+      .replace(/\n{3,}/g, '\n\n')
+      // Remove duplicate spaces
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private extractStructuredData(text: string, documentType: string): any {

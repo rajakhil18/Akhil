@@ -28,13 +28,14 @@ Preferred communication style: Simple, everyday language.
 
 1. **Document Upload System**
    - Drag-and-drop file upload interface
-   - Support for JPEG, PNG, and PDF files
+   - Support for JPEG and PNG files (PDF temporarily disabled)
    - File size validation and type checking
    - Automatic document type detection
 
-2. **OCR Processing Pipeline**
-   - Image preprocessing with Sharp
-   - Tesseract.js OCR engine integration
+2. **Enhanced OCR Processing Pipeline**
+   - Advanced image preprocessing with Sharp (upscaling, contrast enhancement, noise reduction)
+   - Optimized Tesseract.js OCR engine with custom parameters
+   - Intelligent text cleanup and character error correction
    - Confidence scoring and validation
    - Structured data extraction based on document type
 
@@ -57,10 +58,11 @@ Preferred communication style: Simple, everyday language.
    - File is validated and stored in uploads directory
    - Document metadata is saved to database with "pending" status
 
-2. **Processing Pipeline**:
+2. **Enhanced Processing Pipeline**:
    - Document status updated to "processing"
-   - Image preprocessing for OCR optimization
-   - Tesseract.js performs text extraction
+   - Advanced image preprocessing: upscaling, greyscale conversion, contrast enhancement, noise reduction
+   - Optimized Tesseract.js with LSTM engine and custom parameters
+   - Intelligent text cleanup with character error correction
    - Structured data extraction based on document type
    - Results stored in database with confidence scores
 
