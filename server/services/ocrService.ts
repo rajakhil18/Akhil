@@ -10,18 +10,25 @@ class OCRService {
   async initializeWorker() {
     if (!this.worker) {
       this.worker = await createWorker('eng', 1, {
-        logger: m => console.log(m),
+        logger: () => {}, // Disable verbose logging
         errorHandler: err => console.error(err)
       });
       
-      // Configure OCR parameters for better accuracy
+      // Configure OCR parameters for maximum accuracy
+      // Only set parameters that can be changed after initialization
       await this.worker.setParameters({
-        'tessedit_char_whitelist': 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?@#$%^&*()_+-=[]{}|;:\'",.<>/\\`~',
-        'tessedit_pageseg_mode': '1', // Automatic page segmentation with OSD
-        'tessedit_ocr_engine_mode': '1', // Use LSTM OCR engine
+        'tessedit_pageseg_mode': '3', // Fully automatic page segmentation, but no OSD
         'preserve_interword_spaces': '1',
         'user_defined_dpi': '300',
-        'tessedit_do_invert': '0'
+        'tessedit_do_invert': '0',
+        'tessedit_char_blacklist': '|~`',
+        'classify_enable_learning': '0',
+        'classify_enable_adaptive_matcher': '0',
+        'textord_really_old_xheight': '0',
+        'textord_min_linesize': '2.5',
+        'enable_new_segsearch': '0',
+        'textord_noise_sizefraction': '10.0',
+        'textord_noise_translimit': '7.0'
       });
     }
     return this.worker;
@@ -93,48 +100,59 @@ class OCRService {
   }
 
   private async preprocessImage(filePath: string, mimeType: string): Promise<string> {
-    // If it's a PDF, we can't process it with current setup
+    let imagePath = filePath;
+    
+    // Convert PDF to image if needed
     if (mimeType === 'application/pdf') {
-      throw new Error('PDF processing is not currently supported. Please upload an image file (JPEG, PNG).');
+      throw new Error('PDF processing is temporarily disabled. Please upload an image file (JPEG, PNG) for now.');
     }
 
-    // Advanced preprocessing for better OCR results
-    const processedPath = filePath.replace(path.extname(filePath), '_processed.png');
+    // Advanced preprocessing for maximum OCR accuracy
+    const processedPath = imagePath.replace(path.extname(imagePath), '_processed.png');
     
     // Get image metadata to determine appropriate processing
-    const metadata = await sharp(filePath).metadata();
+    const metadata = await sharp(imagePath).metadata();
     const width = metadata.width || 1000;
     const height = metadata.height || 1000;
     
-    // Calculate optimal scale factor for better OCR
-    const targetWidth = Math.max(width * 2, 2000); // Upscale for better OCR
+    // Calculate optimal scale factor - target at least 300 DPI equivalent
+    const targetWidth = Math.max(width * 3, 2400); // Triple size for better OCR
     
-    await sharp(filePath)
+    await sharp(imagePath)
       .resize(targetWidth, null, { 
         kernel: sharp.kernel.lanczos3,
         withoutEnlargement: false
       })
       .greyscale()
-      .normalize()
-      .linear(1.2, -(128 * 1.2) + 128) // Increase contrast
-      .sharpen({ sigma: 1, m1: 1, m2: 2, x1: 2, y2: 10, y3: 20 })
-      .median(3) // Reduce noise
-      .png({ quality: 100, compressionLevel: 0 })
+      .normalize() // Normalize before other operations
+      .gamma(1.2) // Slight gamma correction
+      .linear(1.5, -(128 * 1.5) + 128) // Increase contrast significantly
+      .sharpen({ sigma: 1.5, m1: 1.0, m2: 2.0, x1: 2, y2: 10, y3: 20 })
+      .threshold(128) // Convert to pure black and white
+      .median(2) // Light noise reduction
+      .png({ quality: 100, compressionLevel: 0, palette: false })
       .toFile(processedPath);
     
     return processedPath;
   }
+
+
 
   private cleanupText(text: string): string {
     return text
       // Remove excessive whitespace and normalize line breaks
       .replace(/\s{2,}/g, ' ')
       .replace(/\n\s*\n/g, '\n')
-      // Fix common OCR character errors in context
+      // Fix common OCR character errors
       .replace(/[|]/g, 'I')
+      .replace(/[~]/g, '-')
+      .replace(/[`]/g, "'")
+      // Fix context-specific character errors
       .replace(/\b0(?=[A-Za-z])/g, 'O') // 0 followed by letter -> O
       .replace(/\b5(?=[A-Za-z])/g, 'S') // 5 followed by letter -> S
       .replace(/\b1(?=[A-Za-z])/g, 'l') // 1 followed by letter -> l
+      .replace(/\b6(?=[A-Za-z])/g, 'G') // 6 followed by letter -> G
+      .replace(/\b8(?=[A-Za-z])/g, 'B') // 8 followed by letter -> B
       // Remove strange characters but preserve common symbols
       .replace(/[^\w\s.,!?@#$%^&*()_+\-=\[\]{}|;:'",.<>/\\`~\n]/g, '')
       // Clean up spacing around punctuation
@@ -144,6 +162,8 @@ class OCRService {
       .replace(/\n{3,}/g, '\n\n')
       // Remove duplicate spaces
       .replace(/\s+/g, ' ')
+      // Remove single characters on their own lines (likely OCR artifacts)
+      .replace(/\n[^\w\s]\n/g, '\n')
       .trim();
   }
 
